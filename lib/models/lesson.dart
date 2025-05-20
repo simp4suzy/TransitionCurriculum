@@ -22,4 +22,6 @@ class Lesson {
   });
 
   toMap() {}
+
+  static fromMap(Map<String, dynamic> e) {}
 }

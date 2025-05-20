@@ -1,71 +1,71 @@
+// lib/screens/reminders.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/timezone.dart' as tz;
 import 'package:transition_curriculum/models/lesson.dart';
+import 'package:transition_curriculum/services/notification_service.dart';
 
 class RemindersScreen extends StatefulWidget {
   final List<Lesson> lessons;
 
-  const RemindersScreen({required this.lessons});
+  const RemindersScreen({Key? key, required this.lessons}) : super(key: key);
 
   @override
   _RemindersScreenState createState() => _RemindersScreenState();
 }
 
 class _RemindersScreenState extends State<RemindersScreen> {
-  final FlutterLocalNotificationsPlugin _notificationsPlugin =
-      FlutterLocalNotificationsPlugin();
+  final NotificationService _notifService = NotificationService();
+  List<PendingNotificationRequest> _pending = [];
 
   @override
   void initState() {
     super.initState();
-    _initializeNotifications();
+    _loadPending();
   }
 
-  Future<void> _initializeNotifications() async {
-    const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('app_icon');
-    
-    final InitializationSettings initializationSettings =
-        InitializationSettings(
-      android: initializationSettingsAndroid,
-    );
-    
-    await _notificationsPlugin.initialize(initializationSettings);
+  Future<void> _loadPending() async {
+    final list = await _notifService.getScheduledNotifications();
+    setState(() => _pending = list);
   }
 
-  Future<void> _scheduleReminder(Lesson lesson) async {
-    await _notificationsPlugin.zonedSchedule(
-      lesson.id.hashCode,
-      'Upcoming Lesson: ${lesson.title}',
-      'Skill: ${lesson.skillCategory}',
-      tz.TZDateTime.from(lesson.date, tz.local),
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'lesson_reminders', 'Lesson Reminders',
-          channelDescription: 'Notifications for upcoming lessons'),
-      ),
-      androidAllowWhileIdle: true,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-    );
+  bool _isScheduled(Lesson lesson) {
+    return _pending.any((n) => n.id == lesson.id.hashCode);
+  }
+
+  Future<void> _toggleReminder(Lesson lesson, bool turnOn) async {
+    if (turnOn) {
+      await _notifService.scheduleLessonReminder(lesson);
+    } else {
+      await _notifService.cancelReminder(lesson.id.hashCode);
+    }
+    await _loadPending();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.lessons.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: Text("Lesson Reminders")),
+        body: Center(child: Text("No lessons planned yet.")),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: Text("Lesson Reminders")),
       body: ListView.builder(
         itemCount: widget.lessons.length,
-        itemBuilder: (ctx, index) {
-          final lesson = widget.lessons[index];
+        itemBuilder: (ctx, i) {
+          final lesson = widget.lessons[i];
+          final scheduled = _isScheduled(lesson);
+
           return ListTile(
             title: Text(lesson.title),
             subtitle: Text(
-                '${lesson.date.toString()} • ${lesson.skillCategory}'),
+              '${lesson.date.toLocal()} • ${lesson.skillCategory}',
+            ),
             trailing: Switch(
-              value: true,
-              onChanged: (value) => _scheduleReminder(lesson),
+              value: scheduled,
+              onChanged: (on) => _toggleReminder(lesson, on),
             ),
           );
         },
