@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:transition_curriculum/models/student.dart';
-import 'package:transition_curriculum/screens/student_profile.dart';
 import 'package:transition_curriculum/services/database_helper.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -103,11 +102,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   subtitle: Text(student.disability),
                   trailing: Icon(Icons.chevron_right),
                   onTap: () {
-                    Navigator.push(
+                    // Navigate via named route so '/profile' is used:
+                    Navigator.pushNamed(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => StudentProfileScreen(student: student),
-                      ),
+                      '/profile',
+                      arguments: student,
                     );
                   },
                 ),
@@ -159,7 +158,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
           ElevatedButton(
             onPressed: () async {
-              if (nameController.text.trim().isEmpty) {
+              final name = nameController.text.trim();
+              if (name.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("Please enter a name")),
                 );
@@ -167,7 +167,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               }
 
               final newStudent = Student(
-                name: nameController.text.trim(),
+                name: name,
                 disability: disabilityController.text.trim(),
                 skills: Student.defaultSkills(),
               );

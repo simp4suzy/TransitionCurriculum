@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:transition_curriculum/models/student.dart';
 import 'package:transition_curriculum/models/skill.dart';
+import 'package:transition_curriculum/models/student.dart';
+import 'package:transition_curriculum/services/database_helper.dart';
 import 'package:transition_curriculum/widgets/skill_card.dart';
 
 class ProgressTrackerScreen extends StatefulWidget {
@@ -13,24 +14,43 @@ class ProgressTrackerScreen extends StatefulWidget {
 }
 
 class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
-  final List<Skill> _skills = [
-    Skill(name: "Personal Hygiene", category: "Care Skills"),
-    Skill(name: "Money Management", category: "Functional Academic Skills"),
-    Skill(name: "Cooking", category: "Life Skills"),
-    Skill(name: "Time Management", category: "Pre-Vocational Skills"),
-    Skill(name: "Basic Computer Skills", category: "Livelihood Skills"),
-    Skill(name: "Arts and Crafts", category: "Enrichment Skills"),
-    Skill(name: "Job Interview Prep", category: "Career Skills"),
-  ];
+  late List<Skill> _skills;
+  bool _loading = true;
 
-  void _updateSkillProgress(int index, int newProgress) {
-    setState(() {
-      _skills[index] = Skill(
-        name: _skills[index].name,
-        category: _skills[index].category,
-        progress: newProgress,
+  @override
+  void initState() {
+    super.initState();
+    _loadSkillsFromStudent();
+  }
+
+  Future<void> _loadSkillsFromStudent() async {
+    // Build Skill objects from the student.skills map
+    final map = widget.student.skills;
+    _skills = map.entries.map((e) {
+      return Skill(
+        name: e.key,
+        category: e.key,      // if you want separate category field, adjust
+        progress: e.value,
       );
+    }).toList();
+
+    setState(() => _loading = false);
+  }
+
+  Future<void> _onProgressChanged(int index, int newProgress) async {
+    final skill = _skills[index];
+
+    // 1) Update local Skill
+    setState(() {
+      skill.progress = newProgress;
+      // drop the lastUpdated setter since it's final
     });
+
+    // 2) Write back into the Student object
+    widget.student.skills[skill.name] = newProgress;
+
+    // 3) Persist student into the DB
+    await DatabaseHelper.instance.updateStudent(widget.student);
   }
 
   @override
@@ -39,18 +59,20 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
       appBar: AppBar(
         title: Text("${widget.student.name}'s Progress"),
       ),
-      body: ListView.builder(
-        padding: EdgeInsets.all(16),
-        itemCount: _skills.length,
-        itemBuilder: (context, index) {
-          return SkillCard(
-            skill: _skills[index],
-            onProgressChanged: (newProgress) {
-              _updateSkillProgress(index, newProgress);
-            },
-          );
-        },
-      ),
+      body: _loading
+          ? Center(child: CircularProgressIndicator())
+          : ListView.builder(
+              padding: EdgeInsets.all(16),
+              itemCount: _skills.length,
+              itemBuilder: (context, index) {
+                return SkillCard(
+                  skill: _skills[index],
+                  onProgressChanged: (newProgress) {
+                    _onProgressChanged(index, newProgress);
+                  },
+                );
+              },
+            ),
     );
   }
 }

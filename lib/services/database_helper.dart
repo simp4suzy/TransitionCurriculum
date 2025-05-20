@@ -4,14 +4,17 @@ import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:universal_io/io.dart';
 import 'dart:convert';
+
 import '../models/student.dart';
 
+/// Defines common database operations for Student entities
 abstract class BaseDatabaseHelper {
   Future<int> insertStudent(Student student);
   Future<List<Student>> getStudents();
+  Future<int> updateStudent(Student student);
 }
 
-// Mobile implementation (SQLite)
+/// Mobile implementation using SQLite
 class MobileDatabaseHelper implements BaseDatabaseHelper {
   static sql.Database? _database;
 
@@ -24,7 +27,7 @@ class MobileDatabaseHelper implements BaseDatabaseHelper {
   Future<sql.Database> _initDatabase() async {
     final dbPath = await sql.getDatabasesPath();
     final fullPath = path.join(dbPath, 'students.db');
-    
+
     return await sql.openDatabase(
       fullPath,
       version: 1,
@@ -52,15 +55,29 @@ class MobileDatabaseHelper implements BaseDatabaseHelper {
     try {
       final db = await database;
       final List<Map<String, dynamic>> maps = await db.query('students');
-      return List.generate(maps.length, (i) => Student.fromMap(maps[i]));
+      return List.generate(
+        maps.length,
+        (i) => Student.fromMap(maps[i]),
+      );
     } catch (e) {
       debugPrint("Error loading students: $e");
       return [];
     }
   }
+
+  @override
+  Future<int> updateStudent(Student student) async {
+    final db = await database;
+    return await db.update(
+      'students',
+      student.toMap(),
+      where: 'id = ?',
+      whereArgs: [student.id],
+    );
+  }
 }
 
-// Web implementation (SharedPreferences)
+/// Web implementation using SharedPreferences
 class WebDatabaseHelper implements BaseDatabaseHelper {
   static const _studentsKey = 'students_data';
 
@@ -69,7 +86,10 @@ class WebDatabaseHelper implements BaseDatabaseHelper {
     final prefs = await SharedPreferences.getInstance();
     final students = await getStudents();
     students.add(student);
-    await prefs.setString(_studentsKey, jsonEncode(students.map((s) => s.toMap()).toList()));
+    await prefs.setString(
+      _studentsKey,
+      jsonEncode(students.map((s) => s.toMap()).toList()),
+    );
     return students.length;
   }
 
@@ -79,11 +99,29 @@ class WebDatabaseHelper implements BaseDatabaseHelper {
     final data = prefs.getString(_studentsKey);
     if (data == null) return [];
     final List<dynamic> jsonList = jsonDecode(data);
-    return jsonList.map((json) => Student.fromMap(json)).toList();
+    return jsonList
+        .map((json) => Student.fromMap(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<int> updateStudent(Student student) async {
+    final prefs = await SharedPreferences.getInstance();
+    final students = await getStudents();
+    final index = students.indexWhere((s) => s.id == student.id);
+    if (index != -1) {
+      students[index] = student;
+      await prefs.setString(
+        _studentsKey,
+        jsonEncode(students.map((s) => s.toMap()).toList()),
+      );
+      return 1;
+    }
+    return 0;
   }
 }
 
-// Factory to choose the right implementation
+/// Factory to choose the right implementation based on platform
 class DatabaseHelper {
   static BaseDatabaseHelper get instance {
     if (kIsWeb || Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
