@@ -20,4 +20,6 @@ class Lesson {
     required this.materials,
     this.completed = false, int? studentId,
   });
+
+  toMap() {}
 }
