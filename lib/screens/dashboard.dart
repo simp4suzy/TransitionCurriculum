@@ -9,6 +9,14 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   late Future<List<Student>> _studentsFuture;
+  final List<Color> _cardColors = [
+    Colors.greenAccent,
+    Colors.amberAccent,
+    Colors.orangeAccent,
+    Colors.lightBlueAccent,
+    Colors.pinkAccent,
+    Colors.tealAccent,
+  ];
 
   @override
   void initState() {
@@ -25,14 +33,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.deepPurple,
       appBar: AppBar(
-        title: Text("Transition Curriculum"),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: _loadStudents,
-          ),
-        ],
+        backgroundColor: Colors.deepPurple,
+        elevation: 0,
+        title: Text(
+          "Transition Curriculum",
+          style: TextStyle(color: Colors.white),
+        ),
       ),
       body: FutureBuilder<List<Student>>(
         future: _studentsFuture,
@@ -50,7 +58,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   SizedBox(height: 20),
                   Text(
                     "Error loading students",
-                    style: TextStyle(fontSize: 18),
+                    style: TextStyle(fontSize: 18, color: Colors.white),
                   ),
                   SizedBox(height: 10),
                   Text(
@@ -68,41 +76,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
             );
           }
 
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          final students = snapshot.data ?? [];
+
+          if (students.isEmpty) {
             return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.group_off, size: 60, color: Colors.grey),
-                  SizedBox(height: 20),
-                  Text(
-                    "No students found",
-                    style: TextStyle(fontSize: 18),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    "Tap the + button to add a new student",
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                ],
+              child: Text(
+                "No students found",
+                style: TextStyle(color: Colors.grey, fontSize: 15),
               ),
             );
           }
 
-          final students = snapshot.data!;
           return ListView.builder(
             padding: EdgeInsets.symmetric(vertical: 8),
             itemCount: students.length,
             itemBuilder: (context, index) {
               final student = students[index];
-              return Card(
-                margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              final color = _cardColors[index % _cardColors.length];
+
+              // Debug print to check student ID
+              print('Dashboard: Student ${student.name} has ID: ${student.id}');
+
+              return Container(
+                margin: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                height: 70,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 child: ListTile(
-                  title: Text(student.name),
-                  subtitle: Text(student.disability),
-                  trailing: Icon(Icons.chevron_right),
+                  leading: Icon(Icons.person, color: Colors.white),
+                  title: Text(
+                    student.name,
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    student.disability,
+                    style: TextStyle(color: Colors.white70),
+                  ),
+                  trailing: Icon(Icons.chevron_right, color: Colors.white),
                   onTap: () {
-                    // Navigate via named route so '/profile' is used:
+                    // Validate student has an ID before navigation
+                    if (student.id == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Error: Student data is incomplete. Please try refreshing.'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      return;
+                    }
+
                     Navigator.pushNamed(
                       context,
                       '/profile',
@@ -115,9 +139,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        child: Icon(Icons.add),
-        onPressed: () => _showAddStudentDialog(context),
+      bottomNavigationBar: Padding(
+        padding: const EdgeInsets.all(50.10),
+        child: SizedBox(
+          width: double.infinity, // or a fixed width like 200
+          height: 60, // set your desired height
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
+            child: Text("Add Student"),
+            onPressed: () => _showAddStudentDialog(context),
+          ),
+        ),
       ),
     );
   }
@@ -159,6 +194,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ElevatedButton(
             onPressed: () async {
               final name = nameController.text.trim();
+              final disability = disabilityController.text.trim();
               if (name.isEmpty) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("Please enter a name")),
@@ -168,15 +204,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               final newStudent = Student(
                 name: name,
-                disability: disabilityController.text.trim(),
+                disability: disability,
                 skills: Student.defaultSkills(),
               );
 
               try {
-                await DatabaseHelper.instance.insertStudent(newStudent);
-                _loadStudents();
+                // Get the assigned ID from the database
+                final assignedId = await DatabaseHelper.instance.insertStudent(newStudent);
+                print('Student inserted with ID: $assignedId');
+                
+                _loadStudents(); // Refresh the list
                 Navigator.pop(context);
+                
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Student "$name" added successfully!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
               } catch (e) {
+                print('Error adding student: $e');
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("Failed to add student: $e")),
                 );

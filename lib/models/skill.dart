@@ -43,7 +43,7 @@ class Skill {
       category: map['category'],
       description: map['description'] ?? '',
       progress: map['progress'] ?? 0,
-      lastUpdated: map['lastUpdated'] != null 
+      lastUpdated: map['lastUpdated'] != null
           ? DateTime.parse(map['lastUpdated'])
           : null,
       subSkills: map['subSkills'] != null
