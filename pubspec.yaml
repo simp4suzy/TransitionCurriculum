@@ -23,6 +23,11 @@ dependencies:
   shared_preferences: ^2.2.2
   printing: ^5.9.1
   pdf: ^3.10.0
+  
+  # Add these for proper alarm/notification functionality
+  flutter_local_notifications: ^17.2.2
+  timezone: ^0.9.4
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
@@ -31,16 +36,15 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
+  
   assets:
     - lib/assets/1.png
     - lib/assets/12.jpg
     - lib/assets/4.jpg
     - lib/assets/13.webp
-
-
-    # Add assets here
-
+    
+  # Add assets here
+  
   # Add custom fonts here if needed
   # fonts:
   #   - family: Schyler

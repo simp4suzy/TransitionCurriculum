@@ -1,8 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:transition_curriculum/models/student.dart';
 import 'package:transition_curriculum/models/lesson.dart';
 import 'package:transition_curriculum/services/database_helper.dart';
-import 'package:transition_curriculum/services/alarm_service.dart';
+import 'package:transition_curriculum/services/simple_notification_service.dart';
 import 'package:transition_curriculum/utils/constants.dart';
 import 'package:transition_curriculum/widgets/lesson_card.dart';
 
@@ -26,41 +27,171 @@ class _LessonPlannerScreenState extends State<LessonPlannerScreen> {
   TimeOfDay _selectedTime = TimeOfDay.now();
   Duration _selectedDuration = lessonDurations[1];
 
+  Timer? _countdownTimer;
+  Timer? _lessonChecker;
+
   @override
   void initState() {
     super.initState();
     _loadLessons();
+    _startCountdownTimer();
+    _initializeNotifications();
+    _startLessonChecker();
   }
 
   @override
   void dispose() {
     _titleController.dispose();
     _descController.dispose();
+    _countdownTimer?.cancel();
+    _lessonChecker?.cancel();
     super.dispose();
+  }
+
+  Future<void> _initializeNotifications() async {
+    try {
+      await SimpleNotificationService().initialize();
+      print('✅ Notification service initialized');
+    } catch (e) {
+      print('❌ Failed to initialize notifications: $e');
+    }
+  }
+
+  void _startLessonChecker() {
+    _lessonChecker = Timer.periodic(Duration(minutes: 1), (_) {
+      _checkForUpcomingLessons();
+    });
+  }
+
+  void _checkForUpcomingLessons() {
+    final now = DateTime.now();
+    
+    for (final lesson in _lessons) {
+      final minutesUntil = lesson.date.difference(now).inMinutes;
+      
+      if (minutesUntil == 5) {
+        _showLessonNotification(lesson, '5 minutes');
+      }
+      
+      if (minutesUntil == 0) {
+        _showLessonNotification(lesson, 'now');
+      }
+    }
+  }
+
+  Future<void> _showLessonNotification(Lesson lesson, String timing) async {
+    await SimpleNotificationService().showLessonStartingNotification(lesson, timing);
+
+    if (mounted) {
+      _showInAppLessonAlert(lesson, timing);
+    }
+  }
+
+  void _showInAppLessonAlert(Lesson lesson, String timing) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: timing == 'now' ? Colors.red[50] : Colors.orange[50],
+        title: Row(
+          children: [
+            Icon(
+              timing == 'now' ? Icons.alarm : Icons.access_time,
+              color: timing == 'now' ? Colors.red : Colors.orange,
+              size: 30,
+            ),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                timing == 'now' ? 'LESSON STARTING NOW!' : 'LESSON STARTING SOON!',
+                style: TextStyle(
+                  color: timing == 'now' ? Colors.red : Colors.orange,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              lesson.title,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text('Category: ${lesson.skillCategory}'),
+            Text('Time: ${lesson.formattedTime}'),
+            Text('Duration: ${lesson.formattedDuration}'),
+            if (timing != 'now') 
+              Text(
+                'Starting in $timing',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          if (timing != 'now')
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('REMIND LATER'),
+            ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: timing == 'now' ? Colors.red : Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: Text('GOT IT!'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDuration(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    if (h > 0) return "$h:${twoDigits(m)}:${twoDigits(s)}";
+    return "${twoDigits(m)}:${twoDigits(s)}";
+  }
+
+  void _startCountdownTimer() {
+    _countdownTimer = Timer.periodic(Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   Future<void> _loadLessons() async {
     print('Loading lessons for student: ${widget.student.name} (ID: ${widget.student.id})');
     setState(() => _loading = true);
-    
+
     final sid = widget.student.id;
     if (sid != null) {
       try {
         final existing = await DatabaseHelper.instance.getLessonsForStudent(sid);
         print('Successfully loaded ${existing.length} lessons from database');
-        
+
         if (mounted) {
           setState(() {
             _lessons = existing;
             _loading = false;
           });
         }
-        
-        // Debug: Print each lesson
+
         for (var lesson in existing) {
           print('Lesson: ${lesson.title} - ${lesson.date} - ${lesson.skillCategory}');
         }
-        
+
       } catch (e) {
         print('Error loading lessons: $e');
         if (mounted) {
@@ -82,7 +213,6 @@ class _LessonPlannerScreenState extends State<LessonPlannerScreen> {
   }
 
   Future<void> _showAddLessonDialog() async {
-    // Reset form fields
     _titleController.clear();
     _descController.clear();
     _selectedCategory = skillCategories.first;
@@ -92,7 +222,7 @@ class _LessonPlannerScreenState extends State<LessonPlannerScreen> {
 
     await showDialog(
       context: context,
-      barrierDismissible: false, // Prevent accidental dismissal
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setDState) {
         return AlertDialog(
           title: Text("Plan New Lesson for ${widget.student.name}"),
@@ -208,7 +338,6 @@ class _LessonPlannerScreenState extends State<LessonPlannerScreen> {
                   return;
                 }
 
-                // Combine date and time
                 final lessonDateTime = DateTime(
                   _selectedDate.year,
                   _selectedDate.month,
@@ -217,7 +346,6 @@ class _LessonPlannerScreenState extends State<LessonPlannerScreen> {
                   _selectedTime.minute,
                 );
 
-                // Create lesson with unique ID
                 final lessonId = 'lesson_${DateTime.now().millisecondsSinceEpoch}_${sid}';
                 final newLesson = Lesson(
                   id: lessonId,
@@ -225,70 +353,58 @@ class _LessonPlannerScreenState extends State<LessonPlannerScreen> {
                   title: _titleController.text.trim(),
                   description: _descController.text.trim(),
                   skillCategory: _selectedCategory,
-                  objectives: [], // Can be expanded later
+                  objectives: [],
                   date: lessonDateTime,
                   duration: _selectedDuration,
-                  materials: [], // Can be expanded later
+                  materials: [],
                   completed: false,
                 );
 
                 print('Creating lesson: ${newLesson.title} for student $sid at ${newLesson.date}');
 
                 try {
-                  // Show loading indicator
                   showDialog(
                     context: ctx,
                     barrierDismissible: false,
                     builder: (c) => Center(child: CircularProgressIndicator()),
                   );
 
-                  // Save lesson to database
                   final success = await DatabaseHelper.instance.insertLesson(sid, newLesson);
                   print('Lesson insertion result: $success');
-                  
+
                   if (success) {
-                    // Schedule alarm for lesson
                     try {
-                      await AlarmService().scheduleLessonAlarm(newLesson);
-                      print('Alarm scheduled successfully for lesson: ${newLesson.title}');
-                    } catch (alarmError) {
-                      print('Warning: Could not schedule alarm: $alarmError');
-                      // Don't fail the whole operation if alarm fails
+                      await SimpleNotificationService().scheduleLessonReminder(newLesson);
+                      print('✅ Notification scheduled successfully for lesson: ${newLesson.title}');
+                    } catch (notificationError) {
+                      print('Warning: Could not schedule notification: $notificationError');
                     }
-                    
-                    // Close loading dialog
+
                     Navigator.pop(ctx);
-                    
-                    // Close form dialog
                     Navigator.pop(ctx);
-                    
-                    // Reload lessons from database
                     await _loadLessons();
-                    
-                    // Show success message
+
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Lesson "${newLesson.title}" has been added successfully!'),
+                          content: Text('✅ Lesson "${newLesson.title}" has been scheduled!\nYou\'ll be notified when it\'s time to start.'),
                           backgroundColor: Colors.green,
-                          duration: Duration(seconds: 3),
+                          duration: Duration(seconds: 4),
                         ),
                       );
                     }
                   } else {
-                    // Close loading dialog
                     Navigator.pop(ctx);
                     throw Exception('Database insertion returned false');
                   }
-                  
+
                 } catch (e) {
                   print('Error saving lesson: $e');
-                  
-                  // Close loading dialog if it's open
+
                   if (Navigator.canPop(ctx)) {
                     Navigator.pop(ctx);
                   }
-                  
+
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -315,15 +431,30 @@ class _LessonPlannerScreenState extends State<LessonPlannerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.deepPurple,
       appBar: AppBar(
+        backgroundColor: Colors.deepPurple,
         title: Text("Lesson Planner for ${widget.student.name}"),
         actions: [
+          IconButton(
+            icon: Icon(Icons.notifications_active),
+            onPressed: () async {
+              await SimpleNotificationService().testNotification();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('🧪 Test notification sent! Check your notification panel.'),
+                  backgroundColor: Colors.blue,
+                ),
+              );
+            },
+            tooltip: "Test Notifications",
+          ),
           IconButton(
             icon: Icon(Icons.alarm),
             onPressed: () {
               _showAlarmInfo();
             },
-            tooltip: "Alarm Status",
+            tooltip: "Notification Info",
           ),
           IconButton(
             icon: Icon(Icons.refresh),
@@ -386,11 +517,53 @@ class _LessonPlannerScreenState extends State<LessonPlannerScreen> {
                     itemCount: _lessons.length,
                     itemBuilder: (ctx, i) {
                       final lesson = _lessons[i];
+                      final now = DateTime.now();
+                      final lessonStart = lesson.date;
+                      final lessonEnd = lesson.date.add(lesson.duration);
+
+                      String countdownText;
+                      Color countdownColor = Colors.deepPurple;
+                      
+                      if (now.isBefore(lessonStart)) {
+                        final diff = lessonStart.difference(now);
+                        countdownText = "Starts in ${_formatDuration(diff)}";
+                        
+                        if (diff.inMinutes <= 5) {
+                          countdownColor = Colors.red;
+                          countdownText = "⚠️ STARTING SOON! " + countdownText;
+                        } else if (diff.inMinutes <= 30) {
+                          countdownColor = Colors.orange;
+                        }
+                      } else if (now.isAfter(lessonEnd)) {
+                        countdownText = "✅ Completed";
+                        countdownColor = Colors.green;
+                      } else {
+                        final diff = lessonEnd.difference(now);
+                        countdownText = "🔴 ACTIVE - Ends in ${_formatDuration(diff)}";
+                        countdownColor = Colors.red;
+                      }
+
                       return Card(
                         margin: EdgeInsets.only(bottom: 12),
-                        child: LessonCard(
-                          lesson: lesson,
-                          student: widget.student,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            LessonCard(
+                              lesson: lesson,
+                              student: widget.student,
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              child: Text(
+                                countdownText,
+                                style: TextStyle(
+                                  color: countdownColor,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     },
@@ -411,9 +584,9 @@ class _LessonPlannerScreenState extends State<LessonPlannerScreen> {
       builder: (ctx) => AlertDialog(
         title: Row(
           children: [
-            Icon(Icons.alarm, color: Colors.blue),
+            Icon(Icons.notifications, color: Colors.blue),
             SizedBox(width: 8),
-            Text("Lesson Alarms"),
+            Text("Lesson Notifications"),
           ],
         ),
         content: Column(
@@ -421,21 +594,28 @@ class _LessonPlannerScreenState extends State<LessonPlannerScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              "Your phone will automatically ring/vibrate when scheduled lessons are about to start.",
-              style: TextStyle(fontSize: 16),
+              "How notifications work:",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 12),
-            Text(
-              "• Alarms are set for each lesson you create",
-              style: TextStyle(fontSize: 14),
-            ),
-            Text(
-              "• Notifications work even when the app is closed",
-              style: TextStyle(fontSize: 14),
-            ),
-            Text(
-              "• You'll be alerted 2 minutes before lesson time",
-              style: TextStyle(fontSize: 14),
+            Text("• 📱 You'll get a notification when you schedule a lesson"),
+            Text("• ⏰ Reminder 5 minutes before lesson starts"),
+            Text("• 🔔 Alert when lesson starts"),
+            Text("• 💡 Works even when app is closed"),
+            SizedBox(height: 16),
+            ElevatedButton.icon(
+              icon: Icon(Icons.science), // Changed from test_tube to science
+              label: Text("Test Notification"),
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await SimpleNotificationService().testNotification();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('🧪 Test notification sent!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              },
             ),
           ],
         ),

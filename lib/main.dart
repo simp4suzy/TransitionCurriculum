@@ -6,7 +6,7 @@ import 'package:transition_curriculum/screens/reports.dart';
 import 'package:transition_curriculum/screens/lesson_planner.dart';
 import 'package:transition_curriculum/models/student.dart';
 import 'package:transition_curriculum/models/lesson.dart';
-import 'package:transition_curriculum/services/alarm_service.dart';
+import 'package:transition_curriculum/services/simple_notification_service.dart';
 
 import 'onboarding_screen.dart';
 import 'splash_screen.dart';
@@ -14,9 +14,8 @@ import 'splash_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize alarm service
-  final alarmService = AlarmService();
-  await alarmService.initialize();
+  // Initialize notification service
+  await SimpleNotificationService().initialize();
   
   runApp(TransitionCurriculumApp());
 }
@@ -54,7 +53,7 @@ class TransitionCurriculumApp extends StatelessWidget {
         },
       },
       onGenerateRoute: (settings) {
-        if (settings.name == '/lesson_from_alarm') {
+        if (settings.name == '/lesson_from_notification') {
           final lesson = settings.arguments as Lesson;
           return MaterialPageRoute(
             builder: (ctx) => LessonPlannerScreen(

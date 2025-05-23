@@ -30,6 +30,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
+  void _confirmDeleteStudent(BuildContext context, Student student) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Student'),
+        content: Text('Are you sure you want to delete "${student.name}"?'),
+        actions: [
+          TextButton(
+            child: Text('Cancel'),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: Text('Delete'),
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await DatabaseHelper.instance.deleteStudent(student.id!);
+              _loadStudents();
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Student "${student.name}" deleted.'),
+                  backgroundColor: Colors.redAccent,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -94,9 +125,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               final student = students[index];
               final color = _cardColors[index % _cardColors.length];
 
-              // Debug print to check student ID
-              print('Dashboard: Student ${student.name} has ID: ${student.id}');
-
               return Container(
                 margin: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                 height: 70,
@@ -114,9 +142,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     student.disability,
                     style: TextStyle(color: Colors.white70),
                   ),
-                  trailing: Icon(Icons.chevron_right, color: Colors.white),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(Icons.delete, color: Colors.white),
+                        onPressed: () {
+                          if (student.id != null) {
+                            _confirmDeleteStudent(context, student);
+                          }
+                        },
+                      ),
+                      Icon(Icons.chevron_right, color: Colors.white),
+                    ],
+                  ),
                   onTap: () {
-                    // Validate student has an ID before navigation
                     if (student.id == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -142,8 +182,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       bottomNavigationBar: Padding(
         padding: const EdgeInsets.all(50.10),
         child: SizedBox(
-          width: double.infinity, // or a fixed width like 200
-          height: 60, // set your desired height
+          width: double.infinity,
+          height: 60,
           child: ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.redAccent,
@@ -209,13 +249,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               );
 
               try {
-                // Get the assigned ID from the database
                 final assignedId = await DatabaseHelper.instance.insertStudent(newStudent);
-                print('Student inserted with ID: $assignedId');
-                
-                _loadStudents(); // Refresh the list
+                _loadStudents();
                 Navigator.pop(context);
-                
+
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text('Student "$name" added successfully!'),
@@ -223,7 +260,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 );
               } catch (e) {
-                print('Error adding student: $e');
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text("Failed to add student: $e")),
                 );

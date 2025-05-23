@@ -56,6 +56,7 @@ class _ProgressTrackerScreenState extends State<ProgressTrackerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.deepPurple,
       appBar: AppBar(
         title: Text("${widget.student.name}'s Progress"),
       ),
